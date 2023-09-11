@@ -1,10 +1,11 @@
+use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-use anyhow::{anyhow, bail, Context};
+use anyhow::{bail, Context};
+use cargo_metadata::MetadataCommand;
 use clap::Parser;
-use serde_json::Value;
 
 #[derive(Debug, Parser)]
 #[command(version)]
@@ -36,20 +37,6 @@ fn git_dirty() -> bool {
         })
 }
 
-fn cmd_json(cmd: &mut Command) -> anyhow::Result<serde_json::Value> {
-    let output = cmd.stderr(Stdio::inherit()).output().context("failed to run command")?;
-
-    if !output.status.success() {
-        bail!("command exited with status {}", output.status);
-    }
-
-    let json = String::from_utf8_lossy(&output.stdout)
-        .parse::<serde_json::Value>()
-        .context("invalid json")?;
-
-    Ok(json)
-}
-
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
@@ -60,39 +47,23 @@ fn main() -> anyhow::Result<()> {
             or run again with the --allow-dirty flag.");
     }
 
-    let meta = match cmd_json(
-        Command::new("cargo")
-            .args([
-                "metadata",
-                "--format-version=1",
-                "--offline",
-                "--no-deps",
-            ])
-    )
-        .context("cargo metadata")?
-    {
-        Value::Object(o) => o,
-        other => bail!("expected a json object, not {}", other),
-    };
+    let meta = MetadataCommand::new()
+        .no_deps()
+        .exec()
+        .context("cargo metadata")?;
 
-    let ws_root = meta.get("workspace_root")
-        .ok_or_else(|| anyhow!("expected a 'workspace_root' field"))?
-        .as_str()
-        .ok_or_else(|| anyhow!("expected 'workspace_root' to be a string"))?;
+    let ws_root = meta.workspace_root;
 
     // Can also get this by itself by running 'cargo locate-project --workspace'
     let ws_toml = PathBuf::from(ws_root).join("Cargo.toml");
     let ws_toml_renamed = ws_toml.with_file_name("_Cargo_sync_temp.toml");
+    let ws_lock = ws_toml.with_file_name("Cargo.lock");
 
     println!("workspace root toml: {ws_toml:?}");
 
-    let ws_members = meta
-        .get("workspace_members")
-        .ok_or_else(|| anyhow!("expected a 'workspace_members' field"))?
-        .as_array()
-        .ok_or_else(|| anyhow!("expected 'workspace_members' to be an array"))?;
-
+    let ws_members = meta.workspace_members;
     println!("workspace members: {ws_members:#?}");
+
     if ws_members.len() < 2 {
         bail!("no point in running this program without multiple workspace members");
     }
@@ -102,8 +73,18 @@ fn main() -> anyhow::Result<()> {
         .context("failed to rename workspace root Cargo.toml")?;
 
     // foreach workspace member:
-    //      copy root Cargo.lock into workspace
-    //      run some cargo command in member context to fix the lock file
+    for pkgid in &ws_members {
+        let pkg = meta.packages.iter().find(|p| &p.id == pkgid).expect("unable to find package");
+        let pkg_dir = pkg.manifest_path.parent().unwrap();
+        eprintln!("{pkgid}: {pkg_dir}");
+
+        env::set_current_dir(&pkg_dir).context("failed to chdir into workspace member")?;
+
+        fs::copy(&ws_lock, pkg_dir.join("Cargo.lock"))
+            .context("failed to copy root lockfile to workspace member")?;
+
+        // run some cargo command in member context to fix the lock file
+    }
 
     // rename workspace Cargo.toml back
     fs::rename(&ws_toml_renamed, &ws_toml)
