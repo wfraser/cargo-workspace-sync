@@ -49,6 +49,7 @@ fn main() -> anyhow::Result<()> {
 
     let meta = MetadataCommand::new()
         .no_deps()
+        .other_options(vec!["--offline".to_owned()])
         .exec()
         .context("cargo metadata")?;
 
@@ -84,6 +85,10 @@ fn main() -> anyhow::Result<()> {
             .context("failed to copy root lockfile to workspace member")?;
 
         // run some cargo command in member context to fix the lock file
+        MetadataCommand::new()
+            .other_options(vec!["--offline".to_owned()])
+            .exec()
+            .with_context(|| format!("failed to run cargo metadata in workspace member {}", pkg.name))?;
     }
 
     // rename workspace Cargo.toml back
