@@ -26,7 +26,7 @@ fn git_dirty_cmd() -> anyhow::Result<bool> {
         bail!("git exited with status {}", output.status);
     }
 
-    Ok(output.stdout != b"\n")
+    Ok(!output.stdout.is_empty())
 }
 
 fn git_dirty() -> bool {
