@@ -63,9 +63,8 @@ fn main() -> anyhow::Result<()> {
     println!("workspace root toml: {ws_toml:?}");
 
     let ws_members = meta.workspace_members;
-    println!("workspace members: {ws_members:#?}");
-
     if ws_members.len() < 2 {
+        eprintln!("workspace members: {ws_members:#?}");
         bail!("no point in running this program without multiple workspace members");
     }
 
@@ -77,7 +76,7 @@ fn main() -> anyhow::Result<()> {
     for pkgid in &ws_members {
         let pkg = meta.packages.iter().find(|p| &p.id == pkgid).expect("unable to find package");
         let pkg_dir = pkg.manifest_path.parent().unwrap();
-        eprintln!("{pkgid}: {pkg_dir}");
+        eprintln!("syncing {pkgid}: {pkg_dir}");
 
         env::set_current_dir(&pkg_dir).context("failed to chdir into workspace member")?;
 
