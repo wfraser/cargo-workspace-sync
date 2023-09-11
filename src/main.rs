@@ -29,6 +29,10 @@ struct SyncArgs {
     /// Allow operation even with a dirty git working directory.
     #[arg(long)]
     allow_dirty: bool,
+
+    /// Pass the `--offline` flag to Cargo.
+    #[arg(long)]
+    offline: bool,
 }
 
 fn git_dirty_cmd() -> anyhow::Result<bool> {
@@ -65,9 +69,14 @@ fn main() -> anyhow::Result<()> {
             or run again with the --allow-dirty flag.");
     }
 
+    let mut cargo_args = vec![];
+    if args.offline {
+        cargo_args.push("--offline".into());
+    }
+
     let meta = MetadataCommand::new()
         .no_deps()
-        .other_options(vec!["--offline".to_owned()])
+        .other_options(cargo_args.clone())
         .exec()
         .context("cargo metadata")?;
 
@@ -103,7 +112,7 @@ fn main() -> anyhow::Result<()> {
 
         // run some cargo command in member context to fix the lock file
         MetadataCommand::new()
-            .other_options(vec!["--offline".to_owned()])
+            .other_options(cargo_args.clone())
             .exec()
             .with_context(|| format!("failed to run cargo metadata in workspace member {}", pkg.name))?;
     }
