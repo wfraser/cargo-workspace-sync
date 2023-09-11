@@ -2,7 +2,38 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use anyhow::{anyhow, bail, Context};
+use clap::Parser;
 use serde_json::Value;
+
+#[derive(Debug, Parser)]
+#[command(version)]
+struct Args {
+    /// Allow operation even with a dirty git working directory.
+    #[arg(long)]
+    allow_dirty: bool,
+}
+
+fn git_dirty_cmd() -> anyhow::Result<bool> {
+    let output = Command::new("git")
+        .args(["status", "--short"])
+        .stderr(Stdio::inherit())
+        .output()
+        .context("failed to run git")?;
+
+    if !output.status.success() {
+        bail!("git exited with status {}", output.status);
+    }
+
+    Ok(output.stdout != b"\n")
+}
+
+fn git_dirty() -> bool {
+    git_dirty_cmd()
+        .unwrap_or_else(|e| {
+            eprintln!("failed checking git working dir: {e}");
+            true
+        })
+}
 
 fn cmd_json(cmd: &mut Command) -> anyhow::Result<serde_json::Value> {
     let output = cmd.stderr(Stdio::inherit()).output().context("failed to run command")?;
@@ -19,6 +50,15 @@ fn cmd_json(cmd: &mut Command) -> anyhow::Result<serde_json::Value> {
 }
 
 fn main() -> anyhow::Result<()> {
+    let args = Args::parse();
+
+    if !args.allow_dirty && git_dirty() {
+        bail!("\
+            Running this command with a dirty git working directory is unwise. \
+            Either commit pending changes (so you can see what changes this program makes) \
+            or run again with the --allow-dirty flag.");
+    }
+
     let meta = match cmd_json(
         Command::new("cargo")
             .args([
