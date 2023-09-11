@@ -73,7 +73,8 @@ fn smoke_test() {
         .success()
         .expect("git commit");
 
-    Command::new(env!("CARGO_BIN_EXE_cargo-sync"))
+    Command::new(env!("CARGO_BIN_EXE_cargo-workspace-sync"))
+        .arg("workspace-sync")
         .current_dir(&path)
         .status()
         .success()

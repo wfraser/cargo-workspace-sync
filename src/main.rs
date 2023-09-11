@@ -5,11 +5,27 @@ use std::process::{Command, Stdio};
 
 use anyhow::{bail, Context};
 use cargo_metadata::MetadataCommand;
+use clap::Args;
 use clap::Parser;
+use clap::Subcommand;
 
 #[derive(Debug, Parser)]
 #[command(version)]
-struct Args {
+#[command(propagate_version = true)]
+struct ProgramArgs {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Debug, Subcommand)]
+enum Commands {
+    /// Synchronize dependencies across members of a workspace where you are maintaining per-member
+    /// lockfiles.
+    WorkspaceSync(SyncArgs),
+}
+
+#[derive(Debug, Args)]
+struct SyncArgs {
     /// Allow operation even with a dirty git working directory.
     #[arg(long)]
     allow_dirty: bool,
@@ -38,7 +54,9 @@ fn git_dirty() -> bool {
 }
 
 fn main() -> anyhow::Result<()> {
-    let args = Args::parse();
+    let args = match ProgramArgs::parse().command {
+        Commands::WorkspaceSync(args) => args,
+    };
 
     if !args.allow_dirty && git_dirty() {
         bail!("\
