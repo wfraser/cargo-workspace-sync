@@ -1,3 +1,4 @@
+use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
@@ -81,8 +82,9 @@ fn main() -> anyhow::Result<()> {
 
     // Can also get this by itself by running 'cargo locate-project --workspace'
     let ws_toml = PathBuf::from(ws_root).join("Cargo.toml");
+    let ws_toml_renamed = ws_toml.with_file_name("_Cargo_sync_temp.toml");
 
-    println!("ws toml: {ws_toml:?}");
+    println!("workspace root toml: {ws_toml:?}");
 
     let ws_members = meta
         .get("workspace_members")
@@ -90,15 +92,22 @@ fn main() -> anyhow::Result<()> {
         .as_array()
         .ok_or_else(|| anyhow!("expected 'workspace_members' to be an array"))?;
 
-    println!("ws members: {ws_members:#?}");
+    println!("workspace members: {ws_members:#?}");
+    if ws_members.len() < 2 {
+        bail!("no point in running this program without multiple workspace members");
+    }
 
     // rename workspace Cargo.toml to something else
+    fs::rename(&ws_toml, &ws_toml_renamed)
+        .context("failed to rename workspace root Cargo.toml")?;
 
     // foreach workspace member:
     //      copy root Cargo.lock into workspace
     //      run some cargo command in member context to fix the lock file
 
     // rename workspace Cargo.toml back
+    fs::rename(&ws_toml_renamed, &ws_toml)
+        .context("failed to rename back workspace root Cargo.toml")?;
 
     Ok(())
 }
